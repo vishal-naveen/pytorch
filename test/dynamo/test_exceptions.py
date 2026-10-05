@@ -2106,6 +2106,45 @@ class ExceptionTests(torch._dynamo.test_case.TestCase):
         ):
             opt_fn(torch.ones(2))
 
+    def test_tensor_op_index_error_is_observed_by_user_handler(self):
+        ops = (
+            lambda x: x[10],
+            lambda x: x.sum(dim=5),
+        )
+        for op in ops:
+            for exc_type in (IndexError, LookupError, Exception):
+
+                def fn(x, op=op, exc_type=exc_type):
+                    try:
+                        return op(x)
+                    except exc_type:
+                        return x + 1
+
+                x = torch.ones(3, 4)
+                opt_fn = torch.compile(fn, backend="eager", fullgraph=True)
+                self.assertEqual(opt_fn(x), fn(x))
+
+    def test_tensor_op_index_error_suppressed_by_contextlib(self):
+        def fn(x):
+            with contextlib.suppress(IndexError):
+                x = x.sum(dim=5)
+            return x + 1
+
+        x = torch.ones(3, 4)
+        opt_fn = torch.compile(fn, backend="eager", fullgraph=True)
+        self.assertEqual(opt_fn(x), fn(x))
+
+    def test_tensor_op_index_error_not_caught_by_runtime_error_handler(self):
+        def fn(x):
+            try:
+                return x.sum(dim=5)
+            except RuntimeError:
+                return x + 1
+
+        opt_fn = torch.compile(fn, backend="eager")
+        with self.assertRaises(IndexError):
+            opt_fn(torch.ones(3, 4))
+
 
 instantiate_parametrized_tests(ExceptionTests)
 

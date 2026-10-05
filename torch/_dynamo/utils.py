@@ -4324,6 +4324,12 @@ def _get_fake_value_impl(
             )
     except Unsupported:
         raise
+    except IndexError as e:
+        from .exc import raise_observed_exception
+
+        if not node.users:
+            tx.output.graph.erase_node(node)
+        raise_observed_exception(IndexError, tx, args=e.args)
     except RuntimeError as e:
         cause: BaseException = e
         if e.__cause__ is not None:
